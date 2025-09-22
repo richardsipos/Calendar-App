@@ -224,9 +224,18 @@ export default function CalendarApp() {
                     className={`border-t border-l border-[#E0DED9] h-10 sm:h-12 cursor-pointer transition-colors duration-200 flex items-stretch justify-center text-[10px] sm:text-xs lg:text-sm rounded-sm ${
                       slotReservations.length > 0 || isDragging ? "text-white" : "hover:bg-[#E9ECE7]"
                     }`}
-                    onMouseDown={() => handleMouseDown(day, idx)}
-                    onMouseEnter={() => handleMouseEnter(day, idx)}
-                    onClick={() => handleSlotClick(day, idx)}
+                    onMouseDown={(e) => {
+                      if (e.pointerType !== "touch") handleMouseDown(day, idx); // only desktop
+                    }}
+                    onMouseEnter={(e) => {
+                      if (e.pointerType !== "touch") handleMouseEnter(day, idx);
+                    }}
+                    onMouseUp={(e) => {
+                      if (e.pointerType !== "touch") handleMouseUp();
+                    }}
+                    onClick={(e) => {
+                      if (e.pointerType === "touch") handleSlotClick(day, idx); // only phones
+                    }}
                   >
                     {slotReservations.length > 0 ? (
                       slotReservations.map((r) => (
