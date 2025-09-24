@@ -28,6 +28,36 @@ const userColors = [
   "#C08497",
 ];
 
+// === Week helpers (UI-only; functionality unchanged) ===
+const getMonday = (d) => {
+  const dt = new Date(d);
+  dt.setHours(0, 0, 0, 0);
+  const day = dt.getDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? -6 : 1 - day; // move to Monday
+  dt.setDate(dt.getDate() + diff);
+  return dt;
+};
+const addDays = (date, days) => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+};
+const ymd = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
+};
+const dayIdxMap = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+// ISO week number (for badge)
+const getISOWeekNumber = (date) => {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+};
+// =======================================================
+
 export default function CalendarApp() {
   const [user, setUser] = useState(localStorage.getItem("calendarUser") || "");
   const [users, setUsers] = useState([]);
@@ -43,18 +73,10 @@ export default function CalendarApp() {
   const [description, setDescription] = useState("");
   const [showPopup, setShowPopup] = useState(false);
 
-  // Calculate current week's dates (Mon start)
-  const today = new Date();
-  const startOfWeek = new Date(today);
-  const jsDay = today.getDay();
-  const offsetToMonday = jsDay === 0 ? 6 : jsDay - 1;
-  startOfWeek.setHours(0, 0, 0, 0);
-  startOfWeek.setDate(today.getDate() - offsetToMonday);
-  const weekDates = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(startOfWeek);
-    d.setDate(startOfWeek.getDate() + i);
-    return d;
-  });
+  // Week selection (Mon start) — same functionality, now stateful for UI
+  const initialWeekStart = getMonday(new Date());
+  const [currentWeekStart, setCurrentWeekStart] = useState(initialWeekStart);
+  const weekDates = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
 
   // 🔹 Sync users
   useEffect(() => {
@@ -65,7 +87,7 @@ export default function CalendarApp() {
     return () => unsub();
   }, []);
 
-  // 🔹 Sync reservations
+  // 🔹 Sync reservations (no logic change)
   useEffect(() => {
     const q = query(collection(db, "Reservations"));
     const unsub = onSnapshot(q, (snapshot) => {
@@ -135,12 +157,16 @@ export default function CalendarApp() {
       setShowPopup(false);
       return;
     }
+    const dayIndex = dayIdxMap[startSlot.day] ?? 0;
     const newRes = {
       day: startSlot.day,
       start: Math.min(startSlot.slot, endSlot),
       end: Math.max(startSlot.slot, endSlot),
       user,
       description,
+      // store week context (non-breaking, purely additive)
+      weekStart: ymd(currentWeekStart),
+      date: ymd(addDays(currentWeekStart, dayIndex)),
     };
     await addDoc(collection(db, "Reservations"), newRes);
     setDescription("");
@@ -150,14 +176,90 @@ export default function CalendarApp() {
     setShowPopup(false);
   };
 
+  // Week-aware render filter (backward compatible)
+  const isInSelectedWeek = (r) => {
+    if (r.weekStart) return r.weekStart === ymd(currentWeekStart);
+    return ymd(currentWeekStart) === ymd(initialWeekStart);
+  };
+
   const getReservationsForSlot = (day, slot) =>
-    reservations.filter((r) => r.day === day && slot >= r.start && slot <= r.end);
+    reservations.filter(
+      (r) =>
+        r.day === day &&
+        slot >= r.start &&
+        slot <= r.end &&
+        isInSelectedWeek(r)
+    );
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 bg-[#FAFAF8] min-h-screen">
       <h1 className="text-2xl sm:text-3xl lg:text-4xl font-serif text-[#4A4A4A] mb-6 sm:mb-8 tracking-wide text-center lg:text-left">
         📅 Shared Weekly Calendar
       </h1>
+
+      {/* Week navigator (enhanced design; functionality unchanged) */}
+      <Card className="mb-6 bg-gradient-to-r from-[#F5F3F0] to-[#FAFAF8] border border-[#E7E5E0]">
+        <CardContent>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {/* Segmented control */}
+            <div className="inline-flex items-center gap-1 p-1 bg-white rounded-full shadow-sm border border-[#E7E5E0]">
+              <Button
+                className="rounded-full px-3 py-1.5 text-sm hover:shadow-sm"
+                onClick={() => setCurrentWeekStart(addDays(currentWeekStart, -7))}
+                title="Previous week"
+              >
+                {/* Left arrow icon */}
+                <svg width="16" height="16" viewBox="0 0 24 24" className="inline mr-1">
+                  <path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                Prev
+              </Button>
+              <Button
+                className="rounded-full px-3 py-1.5 text-sm bg-[#A8B5A0] hover:bg-[#8E9E84] text-white hover:shadow-sm"
+                onClick={() => setCurrentWeekStart(getMonday(new Date()))}
+                title="Jump to this week"
+              >
+                This Week
+              </Button>
+              <Button
+                className="rounded-full px-3 py-1.5 text-sm hover:shadow-sm"
+                onClick={() => setCurrentWeekStart(addDays(currentWeekStart, 7))}
+                title="Next week"
+              >
+                Next
+                {/* Right arrow icon */}
+                <svg width="16" height="16" viewBox="0 0 24 24" className="inline ml-1">
+                  <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" />
+                </svg>
+              </Button>
+            </div>
+
+            {/* Week info + date picker */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-1 rounded-full bg-[#E9ECE7] text-[#4A4A4A] text-xs font-medium">
+                  Week {getISOWeekNumber(currentWeekStart)}
+                </span>
+                <span className="text-sm text-[#4A4A4A]">
+                  {weekDates[0].toLocaleDateString()} – {weekDates[6].toLocaleDateString()}
+                </span>
+              </div>
+              <label className="flex items-center gap-2">
+                <span className="text-xs text-[#6B705C]">Jump to date</span>
+                <input
+                  type="date"
+                  className="border rounded-full px-3 py-1.5 bg-white shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-[#A8B5A0]"
+                  value={ymd(currentWeekStart)}
+                  onChange={(e) => {
+                    const d = new Date(e.target.value);
+                    if (!isNaN(d.valueOf())) setCurrentWeekStart(getMonday(d));
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* User select */}
       <div className="mb-6 flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center">
