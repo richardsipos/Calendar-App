@@ -169,11 +169,6 @@ export default function CalendarApp() {
       date: ymd(addDays(currentWeekStart, dayIndex)),
     };
     await addDoc(collection(db, "Reservations"), newRes);
-    setDescription("");
-    setStartSlot(null);
-    setEndSlot(null);
-    setDragging(null);
-    setShowPopup(false);
   };
 
   // Week-aware render filter (backward compatible)
@@ -401,7 +396,16 @@ export default function CalendarApp() {
               </Button>
               <Button
                 className="w-full sm:w-auto bg-[#A8B5A0] hover:bg-[#8E9E84] text-white px-4 py-2 rounded-lg text-sm sm:text-base"
-                onClick={confirmReservation}
+                onClick={() => {
+                    confirmReservation();
+                    setShowPopup(false);
+                    setDescription("");
+                    setStartSlot(null);
+                    setEndSlot(null);
+                    setDragging(null);
+                  }
+                }
+                
               >
                 Save
               </Button>
